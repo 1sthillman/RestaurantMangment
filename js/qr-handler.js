@@ -26,9 +26,9 @@ async function initQrPage() {
         
         // Masa bilgisini yükle
         const { data: tableData, error: tableError } = await supabase
-            .from('tables')
+            .from('masalar')
             .select('*')
-            .eq('number', parseInt(tableId))
+            .eq('masa_no', parseInt(tableId))
             .single();
             
         if (tableError) {
@@ -43,15 +43,16 @@ async function initQrPage() {
         }
         
         // Sayfa başlığını güncelle
-        document.getElementById('tableNumber').textContent = tableData.number;
+        document.getElementById('tableNumber').textContent = tableData.masa_no;
         document.getElementById('qrPage').classList.remove('hidden');
+        document.getElementById('loadingPage').classList.add('hidden');
         
         // Gerçek zamanlı bağlantıyı kur
-        setupRealtimeConnection(tableData.number);
+        setupRealtimeConnection(tableData.masa_no);
         
         // Buton event listener'ı ekle
         document.getElementById('callWaiterButton').addEventListener('click', () => {
-            callWaiter(tableData.number);
+            callWaiter(tableData.masa_no);
         });
         
     } catch (err) {
@@ -78,13 +79,29 @@ async function callWaiter(tableNumber) {
     try {
         const callButton = document.getElementById('callWaiterButton');
         callButton.disabled = true;
-        callButton.textContent = 'Garson çağrılıyor...';
+        callButton.innerHTML = '<i class="ri-loader-2-line animate-spin mr-2"></i> Garson çağrılıyor...';
+        
+        // Önce masa ID'sini bul
+        const { data: tableData, error: tableError } = await supabase
+            .from('masalar')
+            .select('id')
+            .eq('masa_no', tableNumber)
+            .single();
+            
+        if (tableError) {
+            console.error('Masa ID bulunamadı:', tableError);
+            showError('Garson çağrılırken bir hata oluştu.');
+            callButton.disabled = false;
+            callButton.innerHTML = '<i class="ri-user-voice-line mr-2"></i> Garsonu Çağır';
+            return;
+        }
         
         // Garson çağrı kaydını oluştur
         const { data, error } = await supabase
             .from('waiter_calls')
             .insert([
                 { 
+                    table_id: tableData.id,
                     table_number: tableNumber,
                     status: 'waiting',
                     created_at: new Date().toISOString()
@@ -95,7 +112,7 @@ async function callWaiter(tableNumber) {
             console.error('Garson çağırma hatası:', error);
             showError('Garson çağrılırken bir hata oluştu.');
             callButton.disabled = false;
-            callButton.textContent = 'Garsonu Çağır';
+            callButton.innerHTML = '<i class="ri-user-voice-line mr-2"></i> Garsonu Çağır';
             return;
         }
             
@@ -116,7 +133,7 @@ async function callWaiter(tableNumber) {
         // 30 saniye sonra butonu tekrar aktif et
         setTimeout(() => {
             callButton.disabled = false;
-            callButton.textContent = 'Garsonu Çağır';
+            callButton.innerHTML = '<i class="ri-user-voice-line mr-2"></i> Garsonu Çağır';
         }, 30000);
         
     } catch (err) {
@@ -125,7 +142,7 @@ async function callWaiter(tableNumber) {
         
         const callButton = document.getElementById('callWaiterButton');
         callButton.disabled = false;
-        callButton.textContent = 'Garsonu Çağır';
+        callButton.innerHTML = '<i class="ri-user-voice-line mr-2"></i> Garsonu Çağır';
     }
 }
 
