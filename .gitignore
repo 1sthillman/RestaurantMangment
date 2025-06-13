@@ -1,0 +1,29 @@
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build folders
+/build/
+/dist/
+/.gradle/
+
+# IDE files
+/.idea/
+/.vscode/
+*.iml
+*.iws
+*.ipr
+
+# Misc
+.DS_Store
+Thumbs.db
+.cache
+.project
+.settings/ 
