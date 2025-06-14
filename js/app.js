@@ -730,7 +730,7 @@ async function updateTableStatusFromOrder(tableNumber, orderStatus) {
             tableDurum = 'dolu';
             break;
         case 'tamamlandi':
-            tableDurum = 'hazır'; // 'bos' yerine 'hazır' olarak düzeltildi
+            tableDurum = 'bos'; // Ödeme tamamlandığında masa boş olmalı
             break;
         case 'teslim_edildi':
             tableDurum = 'teslim_edildi';
@@ -4065,7 +4065,7 @@ async function completeOrder(orderId) {
         // Masa durumunu uygulama durumunda güncelle
         const table = appState.tables.find(t => t.number === order.tableNumber);
         if (table) {
-            table.status = 'ready';
+            table.status = 'ready'; // Sipariş hazır olduğunda masa durumu 'ready' olmalı
             console.log('Masa durumu uygulamada güncellendi:', table);
         }
 
@@ -4267,6 +4267,8 @@ async function serveOrder(orderId) {
 // Siparişi tamamla (ödeme) (kasiyer için)
 async function completePayment(orderId, tableId, paymentMethod = 'nakit', paidAmount = 0, changeAmount = 0) {
     try {
+        console.log('Ödeme tamamlanıyor:', { orderId, tableId, paymentMethod });
+        
         // Ödeme kaydı oluştur
         const { data: orderData, error: orderFetchError } = await supabase
             .from('siparisler')
