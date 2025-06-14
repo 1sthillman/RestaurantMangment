@@ -2475,15 +2475,6 @@ async function submitOrder() {
                     // waiter_id alanını kaldırdık - yabancı anahtar hatası önleme
                 })
                 .select();
-                
-            // orderData'nın ilk elemanını al (single yerine)
-            const firstOrderData = orderData && orderData.length > 0 ? orderData[0] : null;
-            
-            if (!firstOrderData) {
-                console.error('Sipariş oluşturuldu ancak veri dönmedi');
-            } else {
-                console.log('Sipariş verisi alındı:', firstOrderData);
-            }
 
         if (orderError) {
             console.error('Sipariş kaydedilirken hata:', orderError);
@@ -2534,7 +2525,7 @@ async function submitOrder() {
 
         console.log('Sipariş başarıyla eklendi');
         
-        // firstOrderData'yı kullan
+        // orderData'nın ilk elemanını al (single yerine)
         const firstOrderData = orderData && orderData.length > 0 ? orderData[0] : null;
         
         if (!firstOrderData) {
@@ -2542,6 +2533,8 @@ async function submitOrder() {
             showToast('Sipariş oluşturuldu ancak masa güncellenemedi');
             return;
         }
+        
+        console.log('Sipariş verisi alındı:', firstOrderData);
 
         try {
             // Sipariş ID'sini masaya ekle
@@ -2564,6 +2557,12 @@ async function submitOrder() {
         }
 
         // Sipariş kalemlerini ekle
+        if (!firstOrderData || !firstOrderData.id) {
+            console.error('Sipariş kalemleri eklenemedi: Sipariş ID bulunamadı');
+            showToast('Sipariş oluşturuldu ancak ürünler eklenemedi');
+            return;
+        }
+        
         const orderItems = appState.currentOrder.items.map(item => ({
             siparis_id: firstOrderData.id,
             urun_id: item.id,
@@ -2603,6 +2602,13 @@ async function submitOrder() {
         const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
         const dateString = now.getDate().toString().padStart(2, '0') + '.' + (now.getMonth() + 1).toString().padStart(2, '0') + '.' + now.getFullYear();
 
+        // firstOrderData kontrolü
+        if (!firstOrderData || !firstOrderData.id) {
+            console.error('Sipariş ID bulunamadı, işlem iptal ediliyor');
+            showToast('Sipariş oluşturuldu ancak bir hata oluştu');
+            return;
+        }
+
         const newOrder = {
             id: firstOrderData.id,
             tableId: appState.currentTable.id,
@@ -2625,7 +2631,11 @@ async function submitOrder() {
             table.status = 'active'; // 'occupied' yerine 'active' kullanılıyor
             table.waiterId = null; // Yabancı anahtar hatası önlemek için null kullanıyoruz
             table.waiterName = appState.currentUser.fullName;
-            table.orderId = firstOrderData.id; // orderData yerine firstOrderData kullanıyoruz
+            table.orderId = firstOrderData.id;
+            
+            console.log('Masa durumu güncellendi:', table);
+        } else {
+            console.error('Masa bulunamadı:', appState.currentTable.number);
         }
 
         // Tüm cihazlara sipariş güncellemesini gönder (gerçek zamanlı)
