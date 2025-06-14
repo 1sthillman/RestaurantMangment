@@ -2372,6 +2372,16 @@ async function submitOrder() {
         }
 
         // Supabase'e sipariş ekle
+        console.log('Sipariş bilgileri:', {
+            masa_id: appState.currentTable.id,
+            masa_no: appState.currentTable.number,
+            waiter_id: appState.currentUser.id || null,
+            waiter_name: appState.currentUser.fullName,
+            durum: 'beklemede',
+            siparis_notu: note,
+            toplam_fiyat: totalAmount
+        });
+        
         const { data: orderData, error: orderError } = await supabase
             .from('siparisler')
             .insert({
@@ -2439,8 +2449,11 @@ async function submitOrder() {
             urun_adi: item.name,
             miktar: item.quantity,
             birim_fiyat: item.price,
-            toplam_fiyat: item.price * item.quantity
+            toplam_fiyat: item.price * item.quantity,
+            durum: 'beklemede'  // Durum alanı eklendi
         }));
+
+        console.log('Sipariş kalemleri ekleniyor:', orderItems);
 
         const { error: itemsError } = await supabase
             .from('siparis_kalemleri')
