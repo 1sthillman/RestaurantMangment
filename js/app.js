@@ -228,46 +228,15 @@ function initSupabase() {
 // Veritabanı ile uygulama verilerini senkronize et
 async function syncDatabaseWithApp() {
     try {
-        // RPC fonksiyonu hata verdiği için doğrudan verileri yüklüyoruz
-        console.log('Veritabanı ile senkronizasyon başlatılıyor...');
-        
-        // Verileri senkronize fonksiyonunu çağırmayı atlıyoruz - hata veriyor
-        // RPC fonksiyonu yerine doğrudan veritabanı işlemlerini kullanıyoruz
-        try {
-            // Kategorileri kontrol et ve gerekirse oluştur
-            const { data: kategoriler, error: kategoriError } = await supabase
-                .from('kategoriler')
-                .select('*');
-                
-            if (kategoriError) {
-                console.error('Kategori kontrolü hatası:', kategoriError);
-            } else if (!kategoriler || kategoriler.length === 0) {
-                console.log('Kategoriler bulunamadı, varsayılan kategoriler oluşturuluyor...');
-                
-                // Varsayılan kategorileri ekle
-                const defaultKategoriler = [
-                    { ad: 'Başlangıçlar', sira: 1 },
-                    { ad: 'Ana Yemekler', sira: 2 },
-                    { ad: 'İçecekler', sira: 3 },
-                    { ad: 'Tatlılar', sira: 4 }
-                ];
-                
-                const { error: insertError } = await supabase
-                    .from('kategoriler')
-                    .insert(defaultKategoriler);
-                    
-                if (insertError) {
-                    console.error('Kategori ekleme hatası:', insertError);
-                } else {
-                    console.log('Varsayılan kategoriler eklendi');
-                }
-            }
-        } catch (err) {
-            console.error('Kategori senkronizasyonu hatası:', err);
-        }
-        
+        // Verileri senkronize fonksiyonunu çağır
+        const { data, error } = await supabase.rpc('sync_menu_data');
 
-        console.log('Veritabanı ile senkronizasyon tamamlandı');
+        if (error) {
+            console.error('Veri senkronizasyonu hatası:', error);
+            // RPC hatası olsa da yükleme adımlarına devam et
+        }
+
+        console.log('Veritabanı ile senkronizasyon tamamlandı:', data);
 
         // Verileri sırayla yükle
         await loadTablesFromSupabase();
@@ -378,8 +347,8 @@ async function loadMenuItemsFromSupabase() {
                 const turkName = item.kategoriler?.ad;
                 const key = categoryMap[turkName] || 'mains';
                 
-                // Görsel URL'si kontrolü - placeholder yerine yerel görsel kullan
-                const imageUrl = item.image_url || 'img/icon-72x72.png';
+                // Görsel URL'si kontrolü
+                const imageUrl = item.image_url || 'https://via.placeholder.com/80';
                 
                 categorizedItems[key].push({
                     id: item.id,
@@ -761,7 +730,7 @@ async function updateTableStatusFromOrder(tableNumber, orderStatus) {
             tableDurum = 'dolu';
             break;
         case 'tamamlandi':
-            tableDurum = 'bos'; // Ödeme tamamlandığında masa boş olmalı
+            tableDurum = 'bos'; // 'hazır' yerine 'bos' olarak düzeltildi - ödeme alındıktan sonra masa boş olmalı
             break;
         case 'teslim_edildi':
             tableDurum = 'teslim_edildi';
@@ -776,29 +745,10 @@ async function updateTableStatusFromOrder(tableNumber, orderStatus) {
     try {
         // Masa durumunu güncelle
         console.log(`Masa ${tableNumber} durumu güncelleniyor: ${tableDurum}`);
-        
-        // Önce masa_no ile eşleşen masayı bul
-        const { data: tableData, error: findError } = await supabase
-            .from('masalar')
-            .select('id')
-            .eq('masa_no', tableNumber)
-            .single();
-            
-        if (findError) {
-            console.error(`Masa ${tableNumber} bulunamadı:`, findError);
-            return;
-        }
-        
-        if (!tableData || !tableData.id) {
-            console.error(`Masa ${tableNumber} için ID bulunamadı`);
-            return;
-        }
-        
-        // ID ile güncelleme yap
         const { error } = await supabase
             .from('masalar')
             .update({ durum: tableDurum })
-            .eq('id', tableData.id);
+            .eq('masa_no', tableNumber);
 
         if (error) {
             console.error('Masa durumu güncellenirken hata:', error);
@@ -847,41 +797,22 @@ function handlePaymentChange(payload) {
 
         // Masa durumunu doğrudan güncelle (boş olarak)
         try {
-            // Önce masa_no ile eşleşen masayı bul
             supabase
                 .from('masalar')
-                .select('id')
+                .update({ 
+                    durum: 'bos',
+                    siparis_id: null,
+                    waiter_id: null,
+                    waiter_name: null,
+                    toplam_tutar: 0
+                })
                 .eq('masa_no', payment.masa_no)
-                .single()
-                .then(({ data: tableData, error: findError }) => {
-                    if (findError) {
-                        console.error(`Masa ${payment.masa_no} bulunamadı:`, findError);
-                        return;
+                .then(({ error }) => {
+                    if (error) {
+                        console.error('Masa durumu güncellenirken hata:', error);
+                    } else {
+                        console.log(`Masa ${payment.masa_no} durumu ödeme sonrası 'bos' olarak güncellendi`);
                     }
-                    
-                    if (!tableData || !tableData.id) {
-                        console.error(`Masa ${payment.masa_no} için ID bulunamadı`);
-                        return;
-                    }
-                    
-                    // ID ile güncelleme yap
-                    supabase
-                        .from('masalar')
-                        .update({ 
-                            durum: 'bos',
-                            siparis_id: null,
-                            waiter_id: null,
-                            waiter_name: null,
-                            toplam_tutar: 0
-                        })
-                        .eq('id', tableData.id)
-                        .then(({ error }) => {
-                            if (error) {
-                                console.error('Masa durumu güncellenirken hata:', error);
-                            } else {
-                                console.log(`Masa ${payment.masa_no} durumu ödeme sonrası 'bos' olarak güncellendi`);
-                            }
-                        });
                 });
         } catch (err) {
             console.error('Masa durumu güncelleme hatası:', err);
@@ -1977,8 +1908,8 @@ function renderMenuItems(category) {
     items.forEach(item => {
         const itemCard = document.createElement('div');
         itemCard.className = 'bg-white rounded-lg border border-gray-200 overflow-hidden fade-in';
-        // Ürün görseli için varsayılan veya ürün görseli - placeholder yerine yerel görsel kullan
-        const imageUrl = item.image_url || item.image || 'img/icon-72x72.png';
+        // Ürün görseli için varsayılan veya ürün görseli
+        const imageUrl = item.image_url || item.image || 'https://via.placeholder.com/80';
         
         // Görsel URL'sini konsola yazdır (hata ayıklama için)
         console.log(`Menü öğesi gösteriliyor: ${item.name}, Görsel URL: ${imageUrl}`);
@@ -1987,7 +1918,7 @@ function renderMenuItems(category) {
             <div class="p-3">
                 <div class="flex items-center mb-2">
                     <img src="${imageUrl}" alt="${item.name}" class="w-10 h-10 rounded mr-3 object-cover"
-                         onerror="this.src='img/icon-72x72.png'; this.onerror=null;">
+                         onerror="this.src='https://via.placeholder.com/80'; this.onerror=null;">
                     <div>
                         <div class="font-medium">${item.name}</div>
                         <div class="text-sm text-gray-500">₺${item.price.toFixed(2)}</div>
@@ -2417,32 +2348,12 @@ async function submitOrder() {
 
         try {
             // Önce masa durumunu güncelle
-            // Kullanıcı ID'si kontrol et - yabancı anahtar hatası önleme
-            let updateData = {
-                durum: 'dolu',
-                waiter_name: appState.currentUser.fullName,
-                toplam_tutar: totalAmount,
-                waiter_id: null // Önce null olarak ayarla, yabancı anahtar hatası önlemek için
-            };
-            
-            // Kullanıcı rolüne göre doğru ID'yi ayarla
-            if (appState.currentUser.role === 'waiter') {
-                // Veritabanındaki gerçek ID'yi kullan
-                updateData.waiter_id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
-            } else if (appState.currentUser.role === 'kitchen') {
-                updateData.waiter_id = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
-            } else if (appState.currentUser.role === 'cashier') {
-                updateData.waiter_id = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
-            }
-            
-            console.log('Masa güncellenecek, waiter_id:', updateData.waiter_id);
-            
-            // Önce ID olmadan güncellemeyi dene
             const { error: tableError } = await supabase
                 .from('masalar')
                 .update({
                     durum: 'dolu',
                     waiter_name: appState.currentUser.fullName,
+                    waiter_id: appState.currentUser.id || null,
                     toplam_tutar: totalAmount
                 })
                 .eq('id', appState.currentTable.id);
@@ -2461,41 +2372,19 @@ async function submitOrder() {
         }
 
         // Supabase'e sipariş ekle
-        console.log('Sipariş bilgileri:', {
-            masa_id: appState.currentTable.id,
-            masa_no: appState.currentTable.number,
-            waiter_id: appState.currentUser.id || null,
-            waiter_name: appState.currentUser.fullName,
-            durum: 'beklemede',
-            siparis_notu: note,
-            toplam_fiyat: totalAmount
-        });
-        
-        try {
-            console.log('Sipariş oluşturuluyor...');
-            
-            // Kullanıcı rolüne göre doğru ID'yi ayarla
-            let waiter_id = null;
-            if (appState.currentUser.role === 'waiter') {
-                waiter_id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
-            } else if (appState.currentUser.role === 'kitchen') {
-                waiter_id = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
-            } else if (appState.currentUser.role === 'cashier') {
-                waiter_id = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
-            }
-            
-            const { data: orderData, error: orderError } = await supabase
-                .from('siparisler')
-                .insert({
-                    masa_id: appState.currentTable.id,
-                    masa_no: appState.currentTable.number,
-                    waiter_name: appState.currentUser.fullName,
-                    waiter_id: waiter_id, // Doğru kullanıcı ID'si ekle
-                    durum: 'beklemede',
-                    siparis_notu: note,
-                    toplam_fiyat: totalAmount
-                })
-                .select();
+        const { data: orderData, error: orderError } = await supabase
+            .from('siparisler')
+            .insert({
+                masa_id: appState.currentTable.id,
+                masa_no: appState.currentTable.number,
+                waiter_id: appState.currentUser.id || null,
+                waiter_name: appState.currentUser.fullName,
+                durum: 'beklemede',
+                siparis_notu: note,
+                toplam_fiyat: totalAmount
+            })
+            .select('*')
+            .single();
 
         if (orderError) {
             console.error('Sipariş kaydedilirken hata:', orderError);
@@ -2508,7 +2397,7 @@ async function submitOrder() {
                     .update({
                         durum: appState.currentTable.status === 'empty' ? 'bos' : convertStatusToDb(appState.currentTable.status),
                         waiter_name: appState.currentTable.waiterName || null,
-                        waiter_id: null, // Yabancı anahtar hatası önlemek için null kullanıyoruz
+                        waiter_id: appState.currentTable.waiterId || null,
                         toplam_tutar: 0
                     })
                     .eq('id', appState.currentTable.id);
@@ -2520,49 +2409,15 @@ async function submitOrder() {
             
             return;
         }
-        } catch (orderInsertError) {
-            console.error('Sipariş eklenirken beklenmeyen hata:', orderInsertError);
-            showToast('Sipariş oluşturulurken beklenmeyen bir hata oluştu');
-            
-            // Masa durumunu geri al (hata durumunda)
-            try {
-                await supabase
-                    .from('masalar')
-                    .update({
-                        durum: appState.currentTable.status === 'empty' ? 'bos' : convertStatusToDb(appState.currentTable.status),
-                        waiter_name: appState.currentTable.waiterName || null,
-                        waiter_id: null, // Yabancı anahtar hatası önlemek için null kullanıyoruz
-                        toplam_tutar: 0
-                    })
-                    .eq('id', appState.currentTable.id);
-                
-                console.log('Masa durumu beklenmeyen hata sonrası geri alındı');
-            } catch (rollbackErr) {
-                console.error('Masa durumu geri alınırken hata:', rollbackErr);
-            }
-            
-            return;
-        }
 
-        console.log('Sipariş başarıyla eklendi');
-        
-        // orderData'nın ilk elemanını al (single yerine)
-        const firstOrderData = orderData && orderData.length > 0 ? orderData[0] : null;
-        
-        if (!firstOrderData) {
-            console.error('Sipariş ID bulunamadı, masa güncellenemeyecek');
-            showToast('Sipariş oluşturuldu ancak masa güncellenemedi');
-            return;
-        }
-        
-        console.log('Sipariş verisi alındı:', firstOrderData);
+        console.log('Sipariş başarıyla eklendi:', orderData);
 
         try {
             // Sipariş ID'sini masaya ekle
             const { error: updateTableError } = await supabase
                 .from('masalar')
                 .update({
-                    siparis_id: firstOrderData.id
+                    siparis_id: orderData.id
                 })
                 .eq('id', appState.currentTable.id);
 
@@ -2578,28 +2433,18 @@ async function submitOrder() {
         }
 
         // Sipariş kalemlerini ekle
-        if (!firstOrderData || !firstOrderData.id) {
-            console.error('Sipariş kalemleri eklenemedi: Sipariş ID bulunamadı');
-            showToast('Sipariş oluşturuldu ancak ürünler eklenemedi');
-            return;
-        }
-        
         const orderItems = appState.currentOrder.items.map(item => ({
-            siparis_id: firstOrderData.id,
+            siparis_id: orderData.id,
             urun_id: item.id,
             urun_adi: item.name,
             miktar: item.quantity,
             birim_fiyat: item.price,
-            toplam_fiyat: item.price * item.quantity,
-            durum: 'beklemede'  // Durum alanı eklendi
+            toplam_fiyat: item.price * item.quantity
         }));
 
-        console.log('Sipariş kalemleri ekleniyor:', orderItems);
-
-        try {
-            const { error: itemsError } = await supabase
-                .from('siparis_kalemleri')
-                .insert(orderItems);
+        const { error: itemsError } = await supabase
+            .from('siparis_kalemleri')
+            .insert(orderItems);
 
         if (itemsError) {
             console.error('Sipariş kalemleri kaydedilirken hata:', itemsError);
@@ -2610,28 +2455,14 @@ async function submitOrder() {
         } else {
             console.log('Sipariş kalemleri başarıyla eklendi');
         }
-        } catch (itemsInsertError) {
-            console.error('Sipariş kalemleri eklenirken beklenmeyen hata:', itemsInsertError);
-            
-            // Beklenmeyen hata oluştu, ancak sipariş zaten oluşturuldu
-            // Kullanıcıya bilgi ver ama işleme devam et
-            showToast('Sipariş oluşturuldu ancak ürünler eklenirken bir sorun oluştu');
-        }
 
         // Yeni sipariş oluştur (uygulama durumu için)
         const now = new Date();
         const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
         const dateString = now.getDate().toString().padStart(2, '0') + '.' + (now.getMonth() + 1).toString().padStart(2, '0') + '.' + now.getFullYear();
 
-        // firstOrderData kontrolü
-        if (!firstOrderData || !firstOrderData.id) {
-            console.error('Sipariş ID bulunamadı, işlem iptal ediliyor');
-            showToast('Sipariş oluşturuldu ancak bir hata oluştu');
-            return;
-        }
-
         const newOrder = {
-            id: firstOrderData.id,
+            id: orderData.id,
             tableId: appState.currentTable.id,
             tableNumber: appState.currentTable.number,
             status: 'new',
@@ -2650,13 +2481,9 @@ async function submitOrder() {
         const table = appState.tables.find(t => t.number === appState.currentTable.number);
         if (table) {
             table.status = 'active'; // 'occupied' yerine 'active' kullanılıyor
-            table.waiterId = null; // Yabancı anahtar hatası önlemek için null kullanıyoruz
+            table.waiterId = appState.currentUser.id;
             table.waiterName = appState.currentUser.fullName;
-            table.orderId = firstOrderData.id;
-            
-            console.log('Masa durumu güncellendi:', table);
-        } else {
-            console.error('Masa bulunamadı:', appState.currentTable.number);
+            table.orderId = orderData.id;
         }
 
         // Tüm cihazlara sipariş güncellemesini gönder (gerçek zamanlı)
@@ -4238,7 +4065,7 @@ async function completeOrder(orderId) {
         // Masa durumunu uygulama durumunda güncelle
         const table = appState.tables.find(t => t.number === order.tableNumber);
         if (table) {
-            table.status = 'ready'; // Sipariş hazır olduğunda masa durumu 'ready' olmalı
+            table.status = 'ready';
             console.log('Masa durumu uygulamada güncellendi:', table);
         }
 
@@ -4440,8 +4267,6 @@ async function serveOrder(orderId) {
 // Siparişi tamamla (ödeme) (kasiyer için)
 async function completePayment(orderId, tableId, paymentMethod = 'nakit', paidAmount = 0, changeAmount = 0) {
     try {
-        console.log('Ödeme tamamlanıyor:', { orderId, tableId, paymentMethod });
-        
         // Ödeme kaydı oluştur
         const { data: orderData, error: orderFetchError } = await supabase
             .from('siparisler')
@@ -4963,27 +4788,6 @@ function checkAuth() {
     if (user) {
         // Kullanıcı bilgilerini güncelle
         appState.currentUser = user;
-        
-                    // Kullanıcı ID'sini kontrol et
-            if (!appState.currentUser.id || !appState.currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-                console.log('Geçersiz kullanıcı ID formatı, yabancı anahtar hatalarını önlemek için doğru IDler ayarlanacak');
-                
-                // Kullanıcı rolüne göre doğru ID'yi ayarla - veritabanındaki gerçek ID'leri kullan
-                if (appState.currentUser.role === 'waiter') {
-                    appState.currentUser.id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
-                } else if (appState.currentUser.role === 'kitchen') {
-                    appState.currentUser.id = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
-                } else if (appState.currentUser.role === 'cashier') {
-                    appState.currentUser.id = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
-                } else {
-                    appState.currentUser.id = null;
-                }
-                
-                // Kullanıcı bilgilerini localStorage'da güncelle
-                localStorage.setItem('user', JSON.stringify(appState.currentUser));
-                console.log('Kullanıcı ID güncellendi:', appState.currentUser.id);
-            }
-        
         elements.userName.textContent = user.fullName;
         elements.userRole.textContent = user.role === 'waiter' ? 'Garson' :
                                          user.role === 'kitchen' ? 'Mutfak' : 'Kasiyer';
@@ -5033,8 +4837,6 @@ async function login() {
         showLoginError('Lütfen kullanıcı adı ve şifre girin');
         return;
     }
-    
-    console.log('Login başlıyor...');
 
     try {
         console.log('Giriş isteği:', username, role);
@@ -5073,18 +4875,9 @@ async function login() {
                 (role === 'kitchen' && username === 'mutfak1' && password === 'mutfak1') ||
                 (role === 'cashier' && username === 'kasiyer1' && password === 'kasiyer1')) {
                 isValid = true;
-                
-                // Veritabanındaki kullanıcıları kontrol et ve gerçek ID'yi kullan
-                if (role === 'waiter') {
-                    fullName = 'Ahmet Yılmaz';
-                    userId = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
-                } else if (role === 'kitchen') {
-                    fullName = 'Mehmet Şef';
-                    userId = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
-                } else {
-                    fullName = 'Ayşe Kasa';
-                    userId = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
-                }
+                fullName = role === 'waiter' ? 'Ahmet Yılmaz' :
+                           role === 'kitchen' ? 'Mehmet Şef' : 'Ayşe Kasa';
+                userId = null;
             }
 
             // Kullanıcı veritabanında yoksa ekle
