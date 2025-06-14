@@ -2346,15 +2346,28 @@ async function submitOrder() {
             return;
         }
 
+        // Kullanıcı bilgilerini kontrol et
+        if (!appState.currentUser || !appState.currentUser.fullName) {
+            console.error('Kullanıcı bilgisi eksik!', appState.currentUser);
+            showToast('Kullanıcı bilgisi alınamadı, lütfen yeniden giriş yapın');
+            return;
+        }
+
+        // İşlem başlamadan önce yükleniyor göster
+        showToast('Sipariş işleniyor, lütfen bekleyin...');
+        
+        // Önce masa durumunu güncelle
+        let masaDurumuGuncellendi = false;
+        
         try {
-            // Önce masa durumunu güncelle
             const { error: tableError } = await supabase
                 .from('masalar')
                 .update({
                     durum: 'dolu',
                     waiter_name: appState.currentUser.fullName,
                     waiter_id: appState.currentUser.id || null,
-                    toplam_tutar: totalAmount
+                    toplam_tutar: totalAmount,
+                    guncelleme_zamani: new Date().toISOString()
                 })
                 .eq('id', appState.currentTable.id);
 
@@ -2364,6 +2377,7 @@ async function submitOrder() {
                 return;
             } else {
                 console.log('Masa durumu başarıyla güncellendi');
+                masaDurumuGuncellendi = true;
             }
         } catch (tableUpdateError) {
             console.error('Masa durumu güncelleme işleminde beklenmeyen hata:', tableUpdateError);
@@ -2372,6 +2386,7 @@ async function submitOrder() {
         }
 
         // Supabase'e sipariş ekle
+        const now = new Date().toISOString();
         const { data: orderData, error: orderError } = await supabase
             .from('siparisler')
             .insert({
@@ -2381,7 +2396,10 @@ async function submitOrder() {
                 waiter_name: appState.currentUser.fullName,
                 durum: 'beklemede',
                 siparis_notu: note,
-                toplam_fiyat: totalAmount
+                toplam_fiyat: totalAmount,
+                created_at: now,
+                update_at: now,
+                olusturma_zamani: now
             })
             .select('*')
             .single();
@@ -2391,20 +2409,23 @@ async function submitOrder() {
             showToast(`Sipariş oluşturulurken hata: ${orderError.message || 'Bilinmeyen bir hata oluştu'}`);
             
             // Masa durumunu geri al (hata durumunda)
-            try {
-                await supabase
-                    .from('masalar')
-                    .update({
-                        durum: appState.currentTable.status === 'empty' ? 'bos' : convertStatusToDb(appState.currentTable.status),
-                        waiter_name: appState.currentTable.waiterName || null,
-                        waiter_id: appState.currentTable.waiterId || null,
-                        toplam_tutar: 0
-                    })
-                    .eq('id', appState.currentTable.id);
-                
-                console.log('Masa durumu hata sonrası geri alındı');
-            } catch (rollbackErr) {
-                console.error('Masa durumu geri alınırken hata:', rollbackErr);
+            if (masaDurumuGuncellendi) {
+                try {
+                    await supabase
+                        .from('masalar')
+                        .update({
+                            durum: appState.currentTable.status === 'empty' ? 'bos' : convertStatusToDb(appState.currentTable.status),
+                            waiter_name: appState.currentTable.waiterName || null,
+                            waiter_id: appState.currentTable.waiterId || null,
+                            toplam_tutar: 0,
+                            guncelleme_zamani: new Date().toISOString()
+                        })
+                        .eq('id', appState.currentTable.id);
+                    
+                    console.log('Masa durumu hata sonrası geri alındı');
+                } catch (rollbackErr) {
+                    console.error('Masa durumu geri alınırken hata:', rollbackErr);
+                }
             }
             
             return;
@@ -2412,12 +2433,13 @@ async function submitOrder() {
 
         console.log('Sipariş başarıyla eklendi:', orderData);
 
+        // Sipariş ID'sini masaya ekle
         try {
-            // Sipariş ID'sini masaya ekle
             const { error: updateTableError } = await supabase
                 .from('masalar')
                 .update({
-                    siparis_id: orderData.id
+                    siparis_id: orderData.id,
+                    guncelleme_zamani: new Date().toISOString()
                 })
                 .eq('id', appState.currentTable.id);
 
@@ -2439,27 +2461,34 @@ async function submitOrder() {
             urun_adi: item.name,
             miktar: item.quantity,
             birim_fiyat: item.price,
-            toplam_fiyat: item.price * item.quantity
+            toplam_fiyat: item.price * item.quantity,
+            durum: 'beklemede',
+            created_at: now,
+            olusturma_zamani: now
         }));
 
-        const { error: itemsError } = await supabase
-            .from('siparis_kalemleri')
-            .insert(orderItems);
+        try {
+            const { error: itemsError } = await supabase
+                .from('siparis_kalemleri')
+                .insert(orderItems);
 
-        if (itemsError) {
-            console.error('Sipariş kalemleri kaydedilirken hata:', itemsError);
-            
-            // Sipariş kalemlerinde hata oluştu, ancak sipariş zaten oluşturuldu
-            // Kullanıcıya bilgi ver ama işleme devam et
-            showToast('Sipariş oluşturuldu ancak bazı ürünler eklenirken hata oluştu');
-        } else {
-            console.log('Sipariş kalemleri başarıyla eklendi');
+            if (itemsError) {
+                console.error('Sipariş kalemleri kaydedilirken hata:', itemsError);
+                
+                // Sipariş kalemlerinde hata oluştu, ancak sipariş zaten oluşturuldu
+                // Kullanıcıya bilgi ver ama işleme devam et
+                showToast('Sipariş oluşturuldu ancak bazı ürünler eklenirken hata oluştu');
+            } else {
+                console.log('Sipariş kalemleri başarıyla eklendi');
+            }
+        } catch (itemsErr) {
+            console.error('Sipariş kalemleri kaydedilirken beklenmeyen hata:', itemsErr);
+            // Hata olsa da işleme devam et
         }
 
         // Yeni sipariş oluştur (uygulama durumu için)
-        const now = new Date();
-        const timeString = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-        const dateString = now.getDate().toString().padStart(2, '0') + '.' + (now.getMonth() + 1).toString().padStart(2, '0') + '.' + now.getFullYear();
+        const timeString = new Date().getHours().toString().padStart(2, '0') + ':' + new Date().getMinutes().toString().padStart(2, '0');
+        const dateString = new Date().getDate().toString().padStart(2, '0') + '.' + (new Date().getMonth() + 1).toString().padStart(2, '0') + '.' + new Date().getFullYear();
 
         const newOrder = {
             id: orderData.id,
@@ -2487,23 +2516,28 @@ async function submitOrder() {
         }
 
         // Tüm cihazlara sipariş güncellemesini gönder (gerçek zamanlı)
-        broadcastData({
-            type: 'order-update',
-            order: newOrder,
-            sender: `${rolePrefix[appState.currentUser.role]}_${appState.currentUser.fullName.replace(/\s+/g, '_').toLowerCase()}`
-        });
+        try {
+            broadcastData({
+                type: 'order-update',
+                order: newOrder,
+                sender: `${rolePrefix[appState.currentUser.role]}_${appState.currentUser.fullName.replace(/\s+/g, '_').toLowerCase()}`
+            });
 
-        broadcastData({
-            type: 'table-update',
-            table: table,
-            sender: `${rolePrefix[appState.currentUser.role]}_${appState.currentUser.fullName.replace(/\s+/g, '_').toLowerCase()}`
-        });
+            broadcastData({
+                type: 'table-update',
+                table: table,
+                sender: `${rolePrefix[appState.currentUser.role]}_${appState.currentUser.fullName.replace(/\s+/g, '_').toLowerCase()}`
+            });
 
-        broadcastData({
-            type: 'notification',
-            message: `Masa ${appState.currentTable.number} için yeni sipariş`,
-            sender: `${rolePrefix[appState.currentUser.role]}_${appState.currentUser.fullName.replace(/\s+/g, '_').toLowerCase()}`
-        });
+            broadcastData({
+                type: 'notification',
+                message: `Masa ${appState.currentTable.number} için yeni sipariş`,
+                sender: `${rolePrefix[appState.currentUser.role]}_${appState.currentUser.fullName.replace(/\s+/g, '_').toLowerCase()}`
+            });
+        } catch (broadcastErr) {
+            console.error('Gerçek zamanlı güncelleme gönderilirken hata:', broadcastErr);
+            // Hata olsa da işleme devam et
+        }
 
         // Siparişi bildirimlere ekle
         addNotification(`Masa ${appState.currentTable.number} için yeni sipariş`);
@@ -2518,8 +2552,8 @@ async function submitOrder() {
 
         showToast('Sipariş başarıyla gönderildi');
     } catch (err) {
-        console.error('Sipariş oluşturma hatası:', err);
-        showToast('Sipariş oluşturulurken bir hata oluştu');
+        console.error('Sipariş oluşturma sırasında beklenmeyen hata:', err);
+        showToast('Sipariş oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.');
     }
 }
 
@@ -3972,7 +4006,7 @@ async function createOrder() {
         }
 
         // Yerel uygulama durumunu güncelle
-        appState.currentTable.status = 'occupied'; // 'active' yerine 'occupied' kullan
+        appState.currentTable.status = 'occupied'; // 'active' yerine 'occupied' kullanılıyor
         appState.currentTable.waiterId = appState.currentUser.id;
         appState.currentTable.waiterName = appState.currentUser.fullName;
 
