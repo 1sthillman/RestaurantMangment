@@ -2424,13 +2424,18 @@ async function submitOrder() {
                 toplam_tutar: totalAmount
             };
             
-            // Eğer geçerli bir users tablosundaki ID varsa ekle, yoksa null olarak bırak
-            if (appState.currentUser.id && appState.currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-                updateData.waiter_id = appState.currentUser.id;
+            // Kullanıcı rolüne göre doğru ID'yi ayarla
+            if (appState.currentUser.role === 'waiter') {
+                updateData.waiter_id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
+            } else if (appState.currentUser.role === 'kitchen') {
+                updateData.waiter_id = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
+            } else if (appState.currentUser.role === 'cashier') {
+                updateData.waiter_id = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
             } else {
                 updateData.waiter_id = null;
-                console.log('Geçerli bir waiter_id bulunamadı, null olarak ayarlanıyor');
             }
+            
+            console.log('Masa güncellenecek, waiter_id:', updateData.waiter_id);
             
             const { error: tableError } = await supabase
                 .from('masalar')
@@ -4943,11 +4948,21 @@ function checkAuth() {
         // Kullanıcı bilgilerini güncelle
         appState.currentUser = user;
         
-        // Kullanıcı ID'sini kontrol et
-        if (!appState.currentUser.id || !appState.currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-            console.log('Geçersiz kullanıcı ID formatı, yabancı anahtar hatalarını önlemek için null olarak ayarlanacak');
-            appState.currentUser.id = null;
-        }
+                    // Kullanıcı ID'sini kontrol et
+            if (!appState.currentUser.id || !appState.currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                console.log('Geçersiz kullanıcı ID formatı, yabancı anahtar hatalarını önlemek için doğru IDler ayarlanacak');
+                
+                // Kullanıcı rolüne göre doğru ID'yi ayarla
+                if (appState.currentUser.role === 'waiter') {
+                    appState.currentUser.id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
+                } else if (appState.currentUser.role === 'kitchen') {
+                    appState.currentUser.id = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
+                } else if (appState.currentUser.role === 'cashier') {
+                    appState.currentUser.id = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
+                } else {
+                    appState.currentUser.id = null;
+                }
+            }
         
         elements.userName.textContent = user.fullName;
         elements.userRole.textContent = user.role === 'waiter' ? 'Garson' :
@@ -5038,9 +5053,18 @@ async function login() {
                 (role === 'kitchen' && username === 'mutfak1' && password === 'mutfak1') ||
                 (role === 'cashier' && username === 'kasiyer1' && password === 'kasiyer1')) {
                 isValid = true;
-                fullName = role === 'waiter' ? 'Ahmet Yılmaz' :
-                           role === 'kitchen' ? 'Mehmet Şef' : 'Ayşe Kasa';
-                userId = null; // Yabancı anahtar hatası önlemek için null kullanıyoruz
+                
+                // Veritabanındaki kullanıcıları kontrol et ve gerçek ID'yi kullan
+                if (role === 'waiter') {
+                    fullName = 'Ahmet Yılmaz';
+                    userId = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
+                } else if (role === 'kitchen') {
+                    fullName = 'Mehmet Şef';
+                    userId = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
+                } else {
+                    fullName = 'Ayşe Kasa';
+                    userId = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
+                }
             }
 
             // Kullanıcı veritabanında yoksa ekle
