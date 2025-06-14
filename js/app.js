@@ -228,15 +228,46 @@ function initSupabase() {
 // Veritabanı ile uygulama verilerini senkronize et
 async function syncDatabaseWithApp() {
     try {
-        // Verileri senkronize fonksiyonunu çağır
-        const { data, error } = await supabase.rpc('sync_menu_data');
-
-        if (error) {
-            console.error('Veri senkronizasyonu hatası:', error);
-            // RPC hatası olsa da yükleme adımlarına devam et
+        // RPC fonksiyonu hata verdiği için doğrudan verileri yüklüyoruz
+        console.log('Veritabanı ile senkronizasyon başlatılıyor...');
+        
+        // Verileri senkronize fonksiyonunu çağırmayı atlıyoruz - hata veriyor
+        // RPC fonksiyonu yerine doğrudan veritabanı işlemlerini kullanıyoruz
+        try {
+            // Kategorileri kontrol et ve gerekirse oluştur
+            const { data: kategoriler, error: kategoriError } = await supabase
+                .from('kategoriler')
+                .select('*');
+                
+            if (kategoriError) {
+                console.error('Kategori kontrolü hatası:', kategoriError);
+            } else if (!kategoriler || kategoriler.length === 0) {
+                console.log('Kategoriler bulunamadı, varsayılan kategoriler oluşturuluyor...');
+                
+                // Varsayılan kategorileri ekle
+                const defaultKategoriler = [
+                    { ad: 'Başlangıçlar', sira: 1 },
+                    { ad: 'Ana Yemekler', sira: 2 },
+                    { ad: 'İçecekler', sira: 3 },
+                    { ad: 'Tatlılar', sira: 4 }
+                ];
+                
+                const { error: insertError } = await supabase
+                    .from('kategoriler')
+                    .insert(defaultKategoriler);
+                    
+                if (insertError) {
+                    console.error('Kategori ekleme hatası:', insertError);
+                } else {
+                    console.log('Varsayılan kategoriler eklendi');
+                }
+            }
+        } catch (err) {
+            console.error('Kategori senkronizasyonu hatası:', err);
         }
+        
 
-        console.log('Veritabanı ile senkronizasyon tamamlandı:', data);
+        console.log('Veritabanı ile senkronizasyon tamamlandı');
 
         // Verileri sırayla yükle
         await loadTablesFromSupabase();
@@ -347,8 +378,8 @@ async function loadMenuItemsFromSupabase() {
                 const turkName = item.kategoriler?.ad;
                 const key = categoryMap[turkName] || 'mains';
                 
-                // Görsel URL'si kontrolü
-                const imageUrl = item.image_url || 'https://via.placeholder.com/80';
+                // Görsel URL'si kontrolü - placeholder yerine yerel görsel kullan
+                const imageUrl = item.image_url || 'img/icon-72x72.png';
                 
                 categorizedItems[key].push({
                     id: item.id,
@@ -1946,8 +1977,8 @@ function renderMenuItems(category) {
     items.forEach(item => {
         const itemCard = document.createElement('div');
         itemCard.className = 'bg-white rounded-lg border border-gray-200 overflow-hidden fade-in';
-        // Ürün görseli için varsayılan veya ürün görseli
-        const imageUrl = item.image_url || item.image || 'https://via.placeholder.com/80';
+        // Ürün görseli için varsayılan veya ürün görseli - placeholder yerine yerel görsel kullan
+        const imageUrl = item.image_url || item.image || 'img/icon-72x72.png';
         
         // Görsel URL'sini konsola yazdır (hata ayıklama için)
         console.log(`Menü öğesi gösteriliyor: ${item.name}, Görsel URL: ${imageUrl}`);
@@ -1956,7 +1987,7 @@ function renderMenuItems(category) {
             <div class="p-3">
                 <div class="flex items-center mb-2">
                     <img src="${imageUrl}" alt="${item.name}" class="w-10 h-10 rounded mr-3 object-cover"
-                         onerror="this.src='https://via.placeholder.com/80'; this.onerror=null;">
+                         onerror="this.src='img/icon-72x72.png'; this.onerror=null;">
                     <div>
                         <div class="font-medium">${item.name}</div>
                         <div class="text-sm text-gray-500">₺${item.price.toFixed(2)}</div>
