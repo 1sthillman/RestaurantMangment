@@ -743,15 +743,44 @@ async function updateTableStatusFromOrder(tableNumber, orderStatus) {
     }
 
     try {
+        // Masa numarasını kontrol et
+        if (!tableNumber) {
+            console.error('Masa numarası bulunamadı');
+            return;
+        }
+
         // Masa durumunu güncelle
         console.log(`Masa ${tableNumber} durumu güncelleniyor: ${tableDurum}`);
+        
+        // Önce masa bilgisini kontrol et
+        const { data: tableData, error: tableCheckError } = await supabase
+            .from('masalar')
+            .select('*')
+            .eq('masa_no', tableNumber)
+            .maybeSingle();
+            
+        if (tableCheckError) {
+            console.error('Masa bilgisi kontrol edilirken hata:', tableCheckError);
+            return;
+        }
+        
+        if (!tableData) {
+            console.error(`Masa ${tableNumber} bulunamadı`);
+            return;
+        }
+        
+        // Masa durumunu güncelle
         const { error } = await supabase
             .from('masalar')
-            .update({ durum: tableDurum })
+            .update({ 
+                durum: tableDurum,
+                guncelleme_zamani: new Date().toISOString()
+            })
             .eq('masa_no', tableNumber);
 
         if (error) {
             console.error('Masa durumu güncellenirken hata:', error);
+            showToast(`Masa durumu güncellenirken bir hata oluştu: ${error.message || 'Bilinmeyen hata'}`);
             return;
         }
 
@@ -766,6 +795,7 @@ async function updateTableStatusFromOrder(tableNumber, orderStatus) {
         }
     } catch (err) {
         console.error('Masa durumu güncelleme hatası:', err);
+        showToast('Masa durumu güncellenirken beklenmeyen bir hata oluştu');
     }
 }
 
@@ -797,25 +827,47 @@ function handlePaymentChange(payload) {
 
         // Masa durumunu doğrudan güncelle (boş olarak)
         try {
+            // Önce masa bilgisini kontrol et
             supabase
                 .from('masalar')
-                .update({ 
-                    durum: 'bos',
-                    siparis_id: null,
-                    waiter_id: null,
-                    waiter_name: null,
-                    toplam_tutar: 0
-                })
+                .select('*')
                 .eq('masa_no', payment.masa_no)
-                .then(({ error }) => {
-                    if (error) {
-                        console.error('Masa durumu güncellenirken hata:', error);
-                    } else {
-                        console.log(`Masa ${payment.masa_no} durumu ödeme sonrası 'bos' olarak güncellendi`);
+                .maybeSingle()
+                .then(({ data: tableData, error: tableCheckError }) => {
+                    if (tableCheckError) {
+                        console.error('Masa bilgisi kontrol edilirken hata:', tableCheckError);
+                        return;
                     }
+                    
+                    if (!tableData) {
+                        console.error(`Masa ${payment.masa_no} bulunamadı`);
+                        return;
+                    }
+                    
+                    // Masa durumunu güncelle
+                    supabase
+                        .from('masalar')
+                        .update({ 
+                            durum: 'bos',
+                            siparis_id: null,
+                            waiter_id: null,
+                            waiter_name: null,
+                            toplam_tutar: 0,
+                            guncelleme_zamani: new Date().toISOString()
+                        })
+                        .eq('masa_no', payment.masa_no)
+                        .then(({ error }) => {
+                            if (error) {
+                                console.error('Masa durumu güncellenirken hata:', error);
+                                showToast(`Masa durumu güncellenirken bir hata oluştu: ${error.message || 'Bilinmeyen hata'}`);
+                            } else {
+                                console.log(`Masa ${payment.masa_no} durumu ödeme sonrası 'bos' olarak güncellendi`);
+                            }
+                        });
                 });
         } catch (err) {
             console.error('Masa durumu güncelleme hatası:', err);
+            showToast('Masa durumu güncellenirken beklenmeyen bir hata oluştu');
         }
 
         // İlgili masayı güncelle
