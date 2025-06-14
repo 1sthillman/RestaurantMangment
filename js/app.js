@@ -2386,14 +2386,24 @@ async function submitOrder() {
 
         try {
             // Önce masa durumunu güncelle
+            // Kullanıcı ID'si kontrol et - yabancı anahtar hatası önleme
+            let updateData = {
+                durum: 'dolu',
+                waiter_name: appState.currentUser.fullName,
+                toplam_tutar: totalAmount
+            };
+            
+            // Eğer geçerli bir users tablosundaki ID varsa ekle, yoksa null olarak bırak
+            if (appState.currentUser.id && appState.currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+                updateData.waiter_id = appState.currentUser.id;
+            } else {
+                updateData.waiter_id = null;
+                console.log('Geçerli bir waiter_id bulunamadı, null olarak ayarlanıyor');
+            }
+            
             const { error: tableError } = await supabase
                 .from('masalar')
-                .update({
-                    durum: 'dolu',
-                    waiter_name: appState.currentUser.fullName,
-                    waiter_id: appState.currentUser.id || null,
-                    toplam_tutar: totalAmount
-                })
+                .update(updateData)
                 .eq('id', appState.currentTable.id);
 
             if (tableError) {
@@ -2427,11 +2437,11 @@ async function submitOrder() {
                 .insert({
                     masa_id: appState.currentTable.id,
                     masa_no: appState.currentTable.number,
-                    waiter_id: appState.currentUser.id || null,
                     waiter_name: appState.currentUser.fullName,
                     durum: 'beklemede',
                     siparis_notu: note,
                     toplam_fiyat: totalAmount
+                    // waiter_id alanını kaldırdık - yabancı anahtar hatası önleme
                 })
                 .select();
                 
@@ -2455,7 +2465,7 @@ async function submitOrder() {
                     .update({
                         durum: appState.currentTable.status === 'empty' ? 'bos' : convertStatusToDb(appState.currentTable.status),
                         waiter_name: appState.currentTable.waiterName || null,
-                        waiter_id: appState.currentTable.waiterId || null,
+                        waiter_id: null, // Yabancı anahtar hatası önlemek için null kullanıyoruz
                         toplam_tutar: 0
                     })
                     .eq('id', appState.currentTable.id);
@@ -2478,7 +2488,7 @@ async function submitOrder() {
                     .update({
                         durum: appState.currentTable.status === 'empty' ? 'bos' : convertStatusToDb(appState.currentTable.status),
                         waiter_name: appState.currentTable.waiterName || null,
-                        waiter_id: appState.currentTable.waiterId || null,
+                        waiter_id: null, // Yabancı anahtar hatası önlemek için null kullanıyoruz
                         toplam_tutar: 0
                     })
                     .eq('id', appState.currentTable.id);
@@ -2582,9 +2592,9 @@ async function submitOrder() {
         const table = appState.tables.find(t => t.number === appState.currentTable.number);
         if (table) {
             table.status = 'active'; // 'occupied' yerine 'active' kullanılıyor
-            table.waiterId = appState.currentUser.id;
+            table.waiterId = null; // Yabancı anahtar hatası önlemek için null kullanıyoruz
             table.waiterName = appState.currentUser.fullName;
-            table.orderId = orderData.id;
+            table.orderId = firstOrderData.id; // orderData yerine firstOrderData kullanıyoruz
         }
 
         // Tüm cihazlara sipariş güncellemesini gönder (gerçek zamanlı)
@@ -4891,6 +4901,13 @@ function checkAuth() {
     if (user) {
         // Kullanıcı bilgilerini güncelle
         appState.currentUser = user;
+        
+        // Kullanıcı ID'sini kontrol et
+        if (!appState.currentUser.id || !appState.currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
+            console.log('Geçersiz kullanıcı ID formatı, yabancı anahtar hatalarını önlemek için null olarak ayarlanacak');
+            appState.currentUser.id = null;
+        }
+        
         elements.userName.textContent = user.fullName;
         elements.userRole.textContent = user.role === 'waiter' ? 'Garson' :
                                          user.role === 'kitchen' ? 'Mutfak' : 'Kasiyer';
@@ -4940,6 +4957,8 @@ async function login() {
         showLoginError('Lütfen kullanıcı adı ve şifre girin');
         return;
     }
+    
+    console.log('Login başlıyor...');
 
     try {
         console.log('Giriş isteği:', username, role);
@@ -4980,7 +4999,7 @@ async function login() {
                 isValid = true;
                 fullName = role === 'waiter' ? 'Ahmet Yılmaz' :
                            role === 'kitchen' ? 'Mehmet Şef' : 'Ayşe Kasa';
-                userId = null;
+                userId = null; // Yabancı anahtar hatası önlemek için null kullanıyoruz
             }
 
             // Kullanıcı veritabanında yoksa ekle
