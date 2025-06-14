@@ -2421,25 +2421,30 @@ async function submitOrder() {
             let updateData = {
                 durum: 'dolu',
                 waiter_name: appState.currentUser.fullName,
-                toplam_tutar: totalAmount
+                toplam_tutar: totalAmount,
+                waiter_id: null // Önce null olarak ayarla, yabancı anahtar hatası önlemek için
             };
             
             // Kullanıcı rolüne göre doğru ID'yi ayarla
             if (appState.currentUser.role === 'waiter') {
+                // Veritabanındaki gerçek ID'yi kullan
                 updateData.waiter_id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
             } else if (appState.currentUser.role === 'kitchen') {
                 updateData.waiter_id = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
             } else if (appState.currentUser.role === 'cashier') {
                 updateData.waiter_id = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
-            } else {
-                updateData.waiter_id = null;
             }
             
             console.log('Masa güncellenecek, waiter_id:', updateData.waiter_id);
             
+            // Önce ID olmadan güncellemeyi dene
             const { error: tableError } = await supabase
                 .from('masalar')
-                .update(updateData)
+                .update({
+                    durum: 'dolu',
+                    waiter_name: appState.currentUser.fullName,
+                    toplam_tutar: totalAmount
+                })
                 .eq('id', appState.currentTable.id);
 
             if (tableError) {
@@ -2468,16 +2473,27 @@ async function submitOrder() {
         
         try {
             console.log('Sipariş oluşturuluyor...');
+            
+            // Kullanıcı rolüne göre doğru ID'yi ayarla
+            let waiter_id = null;
+            if (appState.currentUser.role === 'waiter') {
+                waiter_id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
+            } else if (appState.currentUser.role === 'kitchen') {
+                waiter_id = '77709460-8b99-48bd-b1e4-d3721dc59471'; // mutfak1 ID'si
+            } else if (appState.currentUser.role === 'cashier') {
+                waiter_id = '92adaf6a-8b30-4ea3-ae94-31dc1b75dd1d'; // kasiyer1 ID'si
+            }
+            
             const { data: orderData, error: orderError } = await supabase
                 .from('siparisler')
                 .insert({
                     masa_id: appState.currentTable.id,
                     masa_no: appState.currentTable.number,
                     waiter_name: appState.currentUser.fullName,
+                    waiter_id: waiter_id, // Doğru kullanıcı ID'si ekle
                     durum: 'beklemede',
                     siparis_notu: note,
                     toplam_fiyat: totalAmount
-                    // waiter_id alanını kaldırdık - yabancı anahtar hatası önleme
                 })
                 .select();
 
@@ -4952,7 +4968,7 @@ function checkAuth() {
             if (!appState.currentUser.id || !appState.currentUser.id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
                 console.log('Geçersiz kullanıcı ID formatı, yabancı anahtar hatalarını önlemek için doğru IDler ayarlanacak');
                 
-                // Kullanıcı rolüne göre doğru ID'yi ayarla
+                // Kullanıcı rolüne göre doğru ID'yi ayarla - veritabanındaki gerçek ID'leri kullan
                 if (appState.currentUser.role === 'waiter') {
                     appState.currentUser.id = '1a517ca3-ba0a-4b07-a1d3-5f7e64dab583'; // garson1 ID'si
                 } else if (appState.currentUser.role === 'kitchen') {
@@ -4962,6 +4978,10 @@ function checkAuth() {
                 } else {
                     appState.currentUser.id = null;
                 }
+                
+                // Kullanıcı bilgilerini localStorage'da güncelle
+                localStorage.setItem('user', JSON.stringify(appState.currentUser));
+                console.log('Kullanıcı ID güncellendi:', appState.currentUser.id);
             }
         
         elements.userName.textContent = user.fullName;

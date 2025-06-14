@@ -49,8 +49,50 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       caches.match('./img/icon-72x72.png')
         .then(response => {
-          return response || fetch('./img/icon-72x72.png')
-            .catch(() => new Response('', { status: 200 }));
+          if (response) {
+            return response;
+          }
+          return fetch('./img/icon-72x72.png')
+            .then(fetchResponse => {
+              if (fetchResponse && fetchResponse.status === 200) {
+                return fetchResponse;
+              }
+              return new Response('', { 
+                status: 200, 
+                headers: {'Content-Type': 'image/png'} 
+              });
+            })
+            .catch(() => new Response('', { 
+              status: 200, 
+              headers: {'Content-Type': 'image/png'} 
+            }));
+        })
+    );
+    return;
+  }
+  
+  // Ses dosyaları için hata yönetimi
+  if (event.request.url.includes('waiter_call_sound.mp3')) {
+    event.respondWith(
+      caches.match('./www/sounds/waiter_call.mp3')
+        .then(response => {
+          if (response) {
+            return response;
+          }
+          return fetch('./www/sounds/waiter_call.mp3')
+            .then(fetchResponse => {
+              if (fetchResponse && fetchResponse.status === 200) {
+                return fetchResponse;
+              }
+              return new Response('', { 
+                status: 200, 
+                headers: {'Content-Type': 'audio/mpeg'} 
+              });
+            })
+            .catch(() => new Response('', { 
+              status: 200, 
+              headers: {'Content-Type': 'audio/mpeg'} 
+            }));
         })
     );
     return;
@@ -69,7 +111,14 @@ self.addEventListener('fetch', (event) => {
         return fetch(event.request)
           .then((response) => {
             // Geçerli bir yanıt değilse doğrudan döndür
-            if (!response || response.status !== 200) {
+            if (!response) {
+              return new Response('', { 
+                status: 200, 
+                headers: {'Content-Type': 'text/plain'} 
+              });
+            }
+            
+            if (response.status !== 200) {
               return response;
             }
 

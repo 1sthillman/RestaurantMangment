@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#FF6B35">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Restoran App">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="description" content="Restoran Yönetim ve Adisyon Uygulaması">
+    <title>Restoran Yönetim Sistemi</title>
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script>tailwind.config={theme:{extend:{colors:{primary:'#FF6B35',secondary:'#3A86FF'},borderRadius:{'none':'0px','sm':'4px',DEFAULT:'8px','md':'12px','lg':'16px','xl':'20px','2xl':'24px','3xl':'32px','full':'9999px','button':'8px'}}}}</script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/remixicon/4.6.0/remixicon.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="manifest" href="manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="img/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="192x192" href="img/icon-192x192.png">
+</head>
+<body class="bg-gray-50">
+<!-- Bildirim Sesleri -->
+<audio id="notificationSound" class="notification-sound" preload="none">
+    <source src="sounds/notification.mp3" type="audio/mpeg">
+</audio>
+<!-- Yeni Sipariş Sesi -->
+<audio id="newOrderSound" class="notification-sound" preload="none">
+    <source src="sounds/new_order.mp3" type="audio/mpeg">
+</audio>
+<!-- Sipariş Hazır Sesi -->
+<audio id="orderReadySound" class="notification-sound" preload="none">
+    <source src="sounds/order_ready.mp3" type="audio/mpeg">
+</audio>
+<!-- Sipariş Teslim Alındı Sesi -->
+<audio id="orderDeliveredSound" class="notification-sound" preload="none">
+    <source src="sounds/order_delivered.mp3" type="audio/mpeg">
+</audio>
+<!-- Sipariş Servis Edildi Sesi -->
+<audio id="orderServedSound" class="notification-sound" preload="none">
+    <source src="sounds/order_served.mp3" type="audio/mpeg">
+</audio>
+<!-- Ödeme Tamamlandı Sesi -->
+<audio id="paymentCompleteSound" class="notification-sound" preload="none">
+    <source src="sounds/payment_complete.mp3" type="audio/mpeg">
+</audio>
+<!-- Garson Çağrı Sesi - Warning Alarm sesi -->
+<audio id="waiterCallSound" class="notification-sound" loop preload="none">
+    <source src="sounds/waiter_call.mp3" type="audio/mpeg">
+</audio>
+
+<!-- Giriş Ekranı -->
+<div id="loginScreen" class="fixed inset-0 bg-white flex flex-col items-center justify-center px-6 z-50">
+    <div class="w-full max-w-md">
+        <h1 class="text-3xl font-['Pacifico'] text-primary text-center mb-8">logo</h1>
+
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-6 text-center">Restoran Yönetim Sistemi</h2>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kullanıcı Rolü</label>
+                <div class="relative">
+                    <select id="roleSelect" class="w-full border border-gray-300 rounded-button px-4 py-2 appearance-none bg-white">
+                        <option value="waiter">Garson</option>
+                        <option value="kitchen">Mutfak</option>
+                        <option value="cashier">Kasiyer</option>
+                    </select>
+                    <div class="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
+                        <i class="ri-arrow-down-s-line text-gray-400"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kullanıcı Adı</label>
+                <input id="username" type="text" class="w-full border border-gray-300 rounded-button px-4 py-2" placeholder="Kullanıcı adınızı girin">
+            </div>
+
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Şifre</label>
+                <input id="password" type="password" class="w-full border border-gray-300 rounded-button px-4 py-2" placeholder="Şifrenizi girin">
+            </div>
+
+            <button id="loginButton" class="w-full bg-primary text-white py-3 rounded-button font-medium hover:bg-opacity-90 transition cursor-pointer">
+                Giriş Yap
+            </button>
+
+            <div id="loginError" class="mt-4 text-red-500 text-sm text-center hidden"></div>
+        </div>
+
+        <div class="mt-6 text-center text-sm text-gray-500">
+            <p>Giriş bilgileri:</p>
+            <p>Garson: kullanıcı adı "garson1", şifre "garson1"</p>
+            <p>Mutfak: kullanıcı adı "mutfak1", şifre "mutfak1"</p>
+            <p>Kasiyer: kullanıcı adı "kasiyer1", şifre "kasiyer1"</p>
+        </div>
+    </div>
+</div>
+
+<!-- Ana Uygulama -->
+<div id="appContainer" class="hidden min-h-screen pb-16">
+    <!-- Üst Navigasyon Çubuğu -->
+    <nav class="fixed top-0 w-full bg-white shadow-sm z-40">
+        <div class="flex items-center justify-between px-4 py-3">
+            <div class="flex items-center">
+                <span class="font-['Pacifico'] text-primary text-xl">logo</span>
+            </div>
+
+            <div class="flex items-center">
+                <div class="mr-4 relative">
+                    <button id="notificationButton" class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                        <i class="ri-notification-3-line text-gray-700 ri-lg"></i>
+                        <span id="notificationBadge" class="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center hidden">0</span>
+                    </button>
+
+                    <div id="notificationPanel" class="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg overflow-hidden hidden" style="left: 50%; transform: translateX(-50%); max-width: 90vw;">
+                        <div class="p-3 border-b border-gray-200">
+                            <h3 class="font-medium">Bildirimler</h3>
+                        </div>
+                        <div id="notificationList" class="max-h-80 overflow-y-auto">
+                            <div class="p-4 text-center text-sm text-gray-500">
+                                Bildirim yok
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center">
+                    <div class="mr-3 text-right">
+                        <div id="userName" class="font-medium text-sm"></div>
+                        <div id="userRole" class="text-xs text-gray-500"></div>
+                    </div>
+                    <button id="logoutButton" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                        <i class="ri-logout-box-r-line text-gray-700"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Ana İçerik -->
+    <main class="pt-16 px-4">
+        <!-- Garson Ekranı -->
+        <div id="waiterScreen" class="hidden">
+            <div class="flex justify-between items-center my-4">
+                <h2 class="text-lg font-medium">Masalar</h2>
+                <button id="refreshTablesButton" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 cursor-pointer">
+                    <i class="ri-refresh-line text-gray-700"></i>
+                </button>
+            </div>
+
+            <div id="tableGrid" class="grid grid-cols-2 gap-3 mb-16">
+                <!-- Masalar buraya dinamik olarak eklenecek -->
+            </div>
+        </div>
+
+        <!-- Mutfak Ekranı -->
+        <div id="kitchenScreen" class="hidden">
+            <div class="flex justify-between items-center my-4">
+                <h2 class="text-lg font-medium">Aktif Siparişler</h2>
+                <button id="refreshKitchenButton" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 cursor-pointer">
+                    <i class="ri-refresh-line text-gray-700"></i>
+                </button>
+            </div>
+
+            <div id="kitchenOrdersList" class="space-y-3 mb-16">
+                <!-- Siparişler buraya dinamik olarak eklenecek -->
+            </div>
+        </div>
+
+        <!-- Kasiyer Ekranı -->
+        <div id="cashierScreen" class="hidden">
+            <div class="flex justify-between items-center my-4">
+                <h2 class="text-lg font-medium">Aktif Masalar</h2>
+                <div class="flex space-x-2">
+                    <button id="productManagementButton" class="flex items-center justify-center bg-primary text-white px-4 py-2 rounded-button">
+                        <i class="ri-store-2-line mr-1"></i>
+                        Ürün Yönetimi
+                    </button>
+                    <button id="refreshCashierButton" class="flex items-center justify-center w-8 h-8 rounded-full hover:bg-gray-100 cursor-pointer">
+                        <i class="ri-refresh-line text-gray-700"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="cashierTablesList" class="space-y-3 mb-16">
+                <!-- Masalar buraya dinamik olarak eklenecek -->
+            </div>
+        </div>
+
+        <!-- Ürün Yönetimi Ekranı -->
+        <div id="productManagementScreen" class="fixed inset-0 bg-white z-50 hidden overflow-y-auto">
+            <div class="sticky top-0 bg-white shadow-sm z-10">
+                <div class="flex items-center justify-between px-4 py-3">
+                    <button id="backFromProductManagementButton" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                        <i class="ri-arrow-left-line text-gray-700"></i>
+                    </button>
+                    <h2 class="text-lg font-medium">Ürün Yönetimi</h2>
+                    <button id="addNewProductButton" class="bg-primary text-white px-4 py-1 rounded-button flex items-center">
+                        <i class="ri-add-line mr-1"></i>
+                        Yeni Ürün
+                    </button>
+                </div>
+
+                <div class="px-4 pb-2">
+                    <div class="flex overflow-x-auto space-x-2 pb-2">
+                        <button class="product-category-button flex-shrink-0 px-4 py-2 rounded-full bg-primary text-white" data-category="starters">Başlangıçlar</button>
+                        <button class="product-category-button flex-shrink-0 px-4 py-2 rounded-full bg-gray-200 text-gray-700" data-category="mains">Ana Yemekler</button>
+                        <button class="product-category-button flex-shrink-0 px-4 py-2 rounded-full bg-gray-200 text-gray-700" data-category="drinks">İçecekler</button>
+                        <button class="product-category-button flex-shrink-0 px-4 py-2 rounded-full bg-gray-200 text-gray-700" data-category="desserts">Tatlılar</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4">
+                <div id="productsList" class="space-y-3">
+                    <!-- Ürünler buraya dinamik olarak eklenecek -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Yeni Ürün Ekleme/Düzenleme Ekranı -->
+        <div id="productFormScreen" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+            <div class="bg-white rounded-lg w-11/12 max-w-md p-5 slide-up">
+                <h3 id="productFormTitle" class="text-lg font-medium mb-4">Yeni Ürün Ekle</h3>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Kategori</label>
+                    <select id="productCategory" class="w-full border border-gray-300 rounded-button px-4 py-2 appearance-none bg-white">
+                        <option value="starters">Başlangıçlar</option>
+                        <option value="mains">Ana Yemekler</option>
+                        <option value="drinks">İçecekler</option>
+                        <option value="desserts">Tatlılar</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Ürün Adı</label>
+                    <input id="productName" type="text" class="w-full border border-gray-300 rounded-button px-4 py-2" placeholder="Ürün adını girin">
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Fiyat (₺)</label>
+                    <input id="productPrice" type="number" class="w-full border border-gray-300 rounded-button px-4 py-2" placeholder="0.00">
+                </div>
+
+                <div class="mb-5">
+                    <label class="flex items-center">
+                        <input id="productAvailable" type="checkbox" class="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded">
+                        <span class="ml-2 text-sm text-gray-700">Satışa Açık</span>
+                    </label>
+                </div>
+
+                <div class="flex space-x-3">
+                    <button id="cancelProductButton" class="flex-1 py-3 border border-gray-300 rounded-button text-gray-700 font-medium cursor-pointer">İptal</button>
+                    <button id="saveProductButton" class="flex-1 py-3 bg-primary text-white rounded-button font-medium cursor-pointer">Kaydet</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Sipariş Oluşturma Ekranı -->
+    <div id="orderScreen" class="fixed inset-0 bg-white z-50 hidden overflow-y-auto">
+        <div class="sticky top-0 bg-white shadow-sm z-10">
+            <div class="flex items-center justify-between px-4 py-3">
+                <button id="backToTablesButton" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                    <i class="ri-arrow-left-line text-gray-700"></i>
+                </button>
+                <h2 id="orderTableTitle" class="text-lg font-medium">Masa 1</h2>
+                <div class="w-8"></div>
+            </div>
+
+            <div class="px-4 pb-2">
+                <div class="flex overflow-x-auto space-x-2 pb-2">
+                    <button class="category-button flex-shrink-0 px-4 py-2 rounded-full bg-primary text-white" data-category="starters">Başlangıçlar</button>
+                    <button class="category-button flex-shrink-0 px-4 py-2 rounded-full bg-gray-200 text-gray-700" data-category="mains">Ana Yemekler</button>
+                    <button class="category-button flex-shrink-0 px-4 py-2 rounded-full bg-gray-200 text-gray-700" data-category="drinks">İçecekler</button>
+                    <button class="category-button flex-shrink-0 px-4 py-2 rounded-full bg-gray-200 text-gray-700" data-category="desserts">Tatlılar</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4">
+            <div id="menuItemsGrid" class="grid grid-cols-2 gap-3 mb-4">
+                <!-- Menü öğeleri buraya dinamik olarak eklenecek -->
+            </div>
+
+            <div class="mt-6">
+                <h3 class="text-lg font-medium mb-3 flex justify-between items-center">
+                    <span>Sipariş Sepeti</span>
+                    <span class="text-sm text-primary bg-primary bg-opacity-10 px-2 py-1 rounded-full">Toplam ürünler buraya eklenecek</span>
+                </h3>
+                <div id="orderCart" class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200 shadow-sm transition-all duration-300">
+                    <!-- Sepet öğeleri buraya dinamik olarak eklenecek -->
+                    <div class="p-4 text-center text-sm text-gray-500">
+                        Sepet boş, menüden ürün ekleyin
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Sipariş Notu</label>
+                    <textarea id="orderNote" class="w-full border border-gray-300 rounded-button px-4 py-2 h-20" placeholder="Sipariş ile ilgili özel notlar..."></textarea>
+                </div>
+
+                <button id="submitOrderButton" class="w-full bg-primary text-white py-3 rounded-button font-medium mt-4 hover:bg-opacity-90 transition cursor-pointer shadow-md">
+                    Siparişi Onayla
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sipariş Detay Ekranı -->
+    <div id="orderDetailScreen" class="fixed inset-0 bg-white z-50 hidden overflow-y-auto">
+        <div class="sticky top-0 bg-white shadow-sm z-10">
+            <div class="flex items-center justify-between px-4 py-3">
+                <button id="backFromDetailButton" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                    <i class="ri-arrow-left-line text-gray-700"></i>
+                </button>
+                <h2 id="detailTableTitle" class="text-lg font-medium">Masa 1 Detayları</h2>
+                <div class="w-8"></div>
+            </div>
+        </div>
+
+        <div class="p-4">
+            <div class="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <h3 id="detailTableNumber" class="font-medium">Masa 1</h3>
+                        <p id="detailTableStatus" class="text-sm text-gray-500">Durum: Aktif</p>
+                    </div>
+                    <div id="detailTableTime" class="text-sm text-gray-500">25.05.2025 14:30</div>
+                </div>
+                <div class="text-sm">
+                    <p id="detailTableWaiter" class="text-gray-700">Garson: Ahmet Yılmaz</p>
+                </div>
+            </div>
+
+            <h3 class="text-lg font-medium mb-3">Sipariş Detayları</h3>
+            <div id="orderDetailItems" class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200 mb-4">
+                <!-- Sipariş detayları buraya dinamik olarak eklenecek -->
+            </div>
+
+            <div id="orderDetailNote" class="bg-white rounded-lg border border-gray-200 p-4 mb-4">
+                <h4 class="text-sm font-medium mb-1">Sipariş Notu</h4>
+                <p class="text-sm text-gray-700">Not yok</p>
+            </div>
+
+            <div id="orderDetailActions" class="space-y-3">
+                <!-- Aksiyonlar buraya dinamik olarak eklenecek -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Ödeme Ekranı -->
+    <div id="paymentScreen" class="fixed inset-0 bg-white z-50 hidden overflow-y-auto">
+        <div class="sticky top-0 bg-white shadow-sm z-10">
+            <div class="flex items-center justify-between px-4 py-3">
+                <button id="backFromPaymentButton" class="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 cursor-pointer">
+                    <i class="ri-arrow-left-line text-gray-700"></i>
+                </button>
+                <h2 id="paymentTitle" class="text-lg font-medium">Ödeme - Masa 1</h2>
+                <div class="w-8"></div>
+            </div>
+        </div>
+
+        <div class="p-4">
+            <div class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-200 mb-4">
+                <div id="paymentItems">
+                    <!-- Ödeme detayları buraya dinamik olarak eklenecek -->
+                </div>
+                <div class="p-4 flex justify-between items-center font-medium">
+                    <span>Toplam</span>
+                    <span id="paymentTotal">₺0.00</span>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <h3 class="text-lg font-medium mb-3">Ödeme Yöntemi</h3>
+                <div class="grid grid-cols-2 gap-3">
+                    <button id="cashPayment" class="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-center space-x-2 hover:bg-gray-50 active:bg-gray-100">
+                        <i class="ri-money-dollar-box-line text-gray-700"></i>
+                        <span>Nakit</span>
+                    </button>
+                    <button id="cardPayment" class="bg-white rounded-lg border border-gray-200 p-4 flex items-center justify-center space-x-2 hover:bg-gray-50 active:bg-gray-100">
+                        <i class="ri-bank-card-line text-gray-700"></i>
+                        <span>Kredi Kartı</span>
+                    </button>
+                </div>
+            </div>
+
+            <button id="completePaymentButton" class="w-full bg-primary text-white py-3 rounded-button font-medium hover:bg-opacity-90 transition cursor-pointer">
+                Ödemeyi Tamamla
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Garson Çağrı Bildirimi (Ekranın ortasında) -->
+<div id="waiterCallAlert" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+    <div class="bg-black bg-opacity-50 absolute inset-0"></div>
+    <div class="bg-red-600 text-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-4 relative animate-pulse z-10">
+        <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center">
+                <i class="ri-alarm-warning-fill text-2xl mr-2"></i>
+                <h3 class="text-xl font-bold">Garson Çağrısı!</h3>
+            </div>
+            <button id="closeWaiterCallAlert" class="text-white hover:text-gray-200">
+                <i class="ri-close-line text-xl"></i>
+            </button>
+        </div>
+        <p id="waiterCallMessage" class="mb-4 text-lg">Masa 5 garson çağırıyor!</p>
+        <div class="flex justify-end space-x-3">
+            <button id="dismissWaiterCall" class="bg-white bg-opacity-20 hover:bg-opacity-30 text-white px-4 py-2 rounded-button">
+                Sonra
+            </button>
+            <button id="acceptWaiterCall" class="bg-white text-red-600 px-4 py-2 rounded-button font-medium">
+                Yanıtla
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Mesajı -->
+<div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg transition-opacity duration-300 opacity-0 hidden">
+    <span id="toastMessage"></span>
+</div>
+
+<!-- PeerJS Kütüphanesi -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.6/dist/umd/supabase.min.js"></script>
+
+<script src="js/app.js"></script>
+
+<!-- Service Worker Kaydı -->
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(registration => {
+                    console.log('Service Worker kaydı başarılı:', registration.scope);
+                })
+                .catch(error => {
+                    console.log('Service Worker kaydı başarısız:', error);
+                });
+        });
+    }
+
+    // Bildirim izni iste
+    if ('Notification' in window) {
+        Notification.requestPermission();
+    }
+</script>
+</body>
+</html>
