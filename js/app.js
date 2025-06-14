@@ -2382,19 +2382,20 @@ async function submitOrder() {
             toplam_fiyat: totalAmount
         });
         
-        const { data: orderData, error: orderError } = await supabase
-            .from('siparisler')
-            .insert({
-                masa_id: appState.currentTable.id,
-                masa_no: appState.currentTable.number,
-                waiter_id: appState.currentUser.id || null,
-                waiter_name: appState.currentUser.fullName,
-                durum: 'beklemede',
-                siparis_notu: note,
-                toplam_fiyat: totalAmount
-            })
-            .select('*')
-            .single();
+        try {
+            const { data: orderData, error: orderError } = await supabase
+                .from('siparisler')
+                .insert({
+                    masa_id: appState.currentTable.id,
+                    masa_no: appState.currentTable.number,
+                    waiter_id: appState.currentUser.id || null,
+                    waiter_name: appState.currentUser.fullName,
+                    durum: 'beklemede',
+                    siparis_notu: note,
+                    toplam_fiyat: totalAmount
+                })
+                .select('*')
+                .single();
 
         if (orderError) {
             console.error('Sipariş kaydedilirken hata:', orderError);
@@ -2413,6 +2414,29 @@ async function submitOrder() {
                     .eq('id', appState.currentTable.id);
                 
                 console.log('Masa durumu hata sonrası geri alındı');
+            } catch (rollbackErr) {
+                console.error('Masa durumu geri alınırken hata:', rollbackErr);
+            }
+            
+            return;
+        }
+        } catch (orderInsertError) {
+            console.error('Sipariş eklenirken beklenmeyen hata:', orderInsertError);
+            showToast('Sipariş oluşturulurken beklenmeyen bir hata oluştu');
+            
+            // Masa durumunu geri al (hata durumunda)
+            try {
+                await supabase
+                    .from('masalar')
+                    .update({
+                        durum: appState.currentTable.status === 'empty' ? 'bos' : convertStatusToDb(appState.currentTable.status),
+                        waiter_name: appState.currentTable.waiterName || null,
+                        waiter_id: appState.currentTable.waiterId || null,
+                        toplam_tutar: 0
+                    })
+                    .eq('id', appState.currentTable.id);
+                
+                console.log('Masa durumu beklenmeyen hata sonrası geri alındı');
             } catch (rollbackErr) {
                 console.error('Masa durumu geri alınırken hata:', rollbackErr);
             }
@@ -2455,9 +2479,10 @@ async function submitOrder() {
 
         console.log('Sipariş kalemleri ekleniyor:', orderItems);
 
-        const { error: itemsError } = await supabase
-            .from('siparis_kalemleri')
-            .insert(orderItems);
+        try {
+            const { error: itemsError } = await supabase
+                .from('siparis_kalemleri')
+                .insert(orderItems);
 
         if (itemsError) {
             console.error('Sipariş kalemleri kaydedilirken hata:', itemsError);
@@ -2467,6 +2492,13 @@ async function submitOrder() {
             showToast('Sipariş oluşturuldu ancak bazı ürünler eklenirken hata oluştu');
         } else {
             console.log('Sipariş kalemleri başarıyla eklendi');
+        }
+        } catch (itemsInsertError) {
+            console.error('Sipariş kalemleri eklenirken beklenmeyen hata:', itemsInsertError);
+            
+            // Beklenmeyen hata oluştu, ancak sipariş zaten oluşturuldu
+            // Kullanıcıya bilgi ver ama işleme devam et
+            showToast('Sipariş oluşturuldu ancak ürünler eklenirken bir sorun oluştu');
         }
 
         // Yeni sipariş oluştur (uygulama durumu için)
