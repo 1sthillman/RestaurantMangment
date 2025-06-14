@@ -745,10 +745,29 @@ async function updateTableStatusFromOrder(tableNumber, orderStatus) {
     try {
         // Masa durumunu güncelle
         console.log(`Masa ${tableNumber} durumu güncelleniyor: ${tableDurum}`);
+        
+        // Önce masa_no ile eşleşen masayı bul
+        const { data: tableData, error: findError } = await supabase
+            .from('masalar')
+            .select('id')
+            .eq('masa_no', tableNumber)
+            .single();
+            
+        if (findError) {
+            console.error(`Masa ${tableNumber} bulunamadı:`, findError);
+            return;
+        }
+        
+        if (!tableData || !tableData.id) {
+            console.error(`Masa ${tableNumber} için ID bulunamadı`);
+            return;
+        }
+        
+        // ID ile güncelleme yap
         const { error } = await supabase
             .from('masalar')
             .update({ durum: tableDurum })
-            .eq('masa_no', tableNumber);
+            .eq('id', tableData.id);
 
         if (error) {
             console.error('Masa durumu güncellenirken hata:', error);
@@ -797,22 +816,41 @@ function handlePaymentChange(payload) {
 
         // Masa durumunu doğrudan güncelle (boş olarak)
         try {
+            // Önce masa_no ile eşleşen masayı bul
             supabase
                 .from('masalar')
-                .update({ 
-                    durum: 'bos',
-                    siparis_id: null,
-                    waiter_id: null,
-                    waiter_name: null,
-                    toplam_tutar: 0
-                })
+                .select('id')
                 .eq('masa_no', payment.masa_no)
-                .then(({ error }) => {
-                    if (error) {
-                        console.error('Masa durumu güncellenirken hata:', error);
-                    } else {
-                        console.log(`Masa ${payment.masa_no} durumu ödeme sonrası 'bos' olarak güncellendi`);
+                .single()
+                .then(({ data: tableData, error: findError }) => {
+                    if (findError) {
+                        console.error(`Masa ${payment.masa_no} bulunamadı:`, findError);
+                        return;
                     }
+                    
+                    if (!tableData || !tableData.id) {
+                        console.error(`Masa ${payment.masa_no} için ID bulunamadı`);
+                        return;
+                    }
+                    
+                    // ID ile güncelleme yap
+                    supabase
+                        .from('masalar')
+                        .update({ 
+                            durum: 'bos',
+                            siparis_id: null,
+                            waiter_id: null,
+                            waiter_name: null,
+                            toplam_tutar: 0
+                        })
+                        .eq('id', tableData.id)
+                        .then(({ error }) => {
+                            if (error) {
+                                console.error('Masa durumu güncellenirken hata:', error);
+                            } else {
+                                console.log(`Masa ${payment.masa_no} durumu ödeme sonrası 'bos' olarak güncellendi`);
+                            }
+                        });
                 });
         } catch (err) {
             console.error('Masa durumu güncelleme hatası:', err);
@@ -2383,6 +2421,7 @@ async function submitOrder() {
         });
         
         try {
+            console.log('Sipariş oluşturuluyor...');
             const { data: orderData, error: orderError } = await supabase
                 .from('siparisler')
                 .insert({
@@ -2394,8 +2433,16 @@ async function submitOrder() {
                     siparis_notu: note,
                     toplam_fiyat: totalAmount
                 })
-                .select('*')
-                .single();
+                .select();
+                
+            // orderData'nın ilk elemanını al (single yerine)
+            const firstOrderData = orderData && orderData.length > 0 ? orderData[0] : null;
+            
+            if (!firstOrderData) {
+                console.error('Sipariş oluşturuldu ancak veri dönmedi');
+            } else {
+                console.log('Sipariş verisi alındı:', firstOrderData);
+            }
 
         if (orderError) {
             console.error('Sipariş kaydedilirken hata:', orderError);
@@ -2444,14 +2491,23 @@ async function submitOrder() {
             return;
         }
 
-        console.log('Sipariş başarıyla eklendi:', orderData);
+        console.log('Sipariş başarıyla eklendi');
+        
+        // firstOrderData'yı kullan
+        const firstOrderData = orderData && orderData.length > 0 ? orderData[0] : null;
+        
+        if (!firstOrderData) {
+            console.error('Sipariş ID bulunamadı, masa güncellenemeyecek');
+            showToast('Sipariş oluşturuldu ancak masa güncellenemedi');
+            return;
+        }
 
         try {
             // Sipariş ID'sini masaya ekle
             const { error: updateTableError } = await supabase
                 .from('masalar')
                 .update({
-                    siparis_id: orderData.id
+                    siparis_id: firstOrderData.id
                 })
                 .eq('id', appState.currentTable.id);
 
@@ -2468,7 +2524,7 @@ async function submitOrder() {
 
         // Sipariş kalemlerini ekle
         const orderItems = appState.currentOrder.items.map(item => ({
-            siparis_id: orderData.id,
+            siparis_id: firstOrderData.id,
             urun_id: item.id,
             urun_adi: item.name,
             miktar: item.quantity,
@@ -2507,7 +2563,7 @@ async function submitOrder() {
         const dateString = now.getDate().toString().padStart(2, '0') + '.' + (now.getMonth() + 1).toString().padStart(2, '0') + '.' + now.getFullYear();
 
         const newOrder = {
-            id: orderData.id,
+            id: firstOrderData.id,
             tableId: appState.currentTable.id,
             tableNumber: appState.currentTable.number,
             status: 'new',
